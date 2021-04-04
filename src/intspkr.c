@@ -3,10 +3,7 @@
 #include <linux/moduleparam.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
-#include <linux/device.h>
-#include <linux/random.h>
 #include <linux/uaccess.h>
-#include <linux/slab.h>
 #include "spkr-io.h"
 
 MODULE_LICENSE("Dual BSD/GPL");
@@ -21,11 +18,16 @@ module_param(minor, int, S_IRUGO);
 
 static dev_t devID;
 
-/**
- * generar el número aleatorio y asociarlo con esa sesión.
- */
-static int intspkr_open(struct inode *inode, struct file *filp)
+struct mutex mutexForWriteSession;
+static int intspkr_open(struct inode *inode, struct file *file)
 {
+    if (file->f_mode & FMODE_WRITE)
+    {
+        if (mutex_trylock(&mutexForWriteSession) == 0)
+        {
+            return -EBUSY;
+        }
+    }
     //(*filp).private_data = kmalloc(1, GFP_KERNEL);
     //get_random_bytes((*filp).private_data, 1);
     printk(KERN_INFO "intspkr opened!\n");
@@ -52,8 +54,12 @@ static ssize_t intspkr_write(struct file *filp, const char __user *buf, size_t s
     return size;
 }
 
-static int intspkr_release(struct inode *inode, struct file *filp)
+static int intspkr_release(struct inode *inode, struct file *file)
 {
+    if (file->f_mode & FMODE_WRITE)
+    {
+        mutex_unlock(&mutexForWriteSession);
+    }
     //kfree((*filp).private_data);
     printk(KERN_INFO "intspkr released!\n");
     return 0;
@@ -102,6 +108,8 @@ static int __init intspkr_init(void)
     }
     // dar alta el dispositivo /sys/class/intspkr/intspkr asociado a esta clase y automaticamente darse alta el archivo /dev/intspkr
     device_create(dev_class, NULL, devID, NULL, SYSFS_DEVICE_NAME_FOR_INTSPKR);
+
+    mutex_init(&mutexForWriteSession);
     printk(KERN_INFO "Initialized intspkr!\n");
 
     spkr_init();
@@ -116,6 +124,8 @@ static void __exit intspkr_exit(void)
     spkr_off();
     spkr_exit();
     printk(KERN_INFO "Stop Beeping!!!\n");
+
+    mutex_destroy(&mutexForWriteSession);
 
     // baja el archivo /sys/class/intspkr/intspkr y automaticamente tambien darse baja del /dev/intspkr
     device_destroy(dev_class, devID);

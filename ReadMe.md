@@ -28,7 +28,7 @@ Ambas plataformas incluyen hardware que implementa la funcionalidad de tipo [PWM
 - [ ] Se proporcionará una operación ioctl para enmudecer (mute) o desenmudecer el altavoz, según el valor del parámetro que reciba. Mientras está el altavoz enmudecido, se seguirán procesando los sonidos de la forma habitual, de manera que cuando se desenmudezca, se escuchará justo el sonido que esté reproduciéndose en ese instante (no se oirá nada en el caso de que no se esté procesando ningún sonido en ese momento o se esté trabajando con un silencio).
 - [ ] Se proveerá de otra operación ioctl para hacer un reinicio del dispositivo vaciando la cola de sonidos pendientes de procesar. Sin embargo, se dejará que concluya el procesado del sonido actual, en caso de que lo hubiera. Los sonidos que se escriban después de esta operación se procesarán de la forma convencional.
 
-## Entorno de desarrollo
+## Antes de empezar: Entorno de desarrollo
 
 En los últimos años algunos fabricantes han optado por prescindir altavoz interno. Afortunadamente, la plataforma VMware ofrece este dispositivo a sus máquinas virtuales. Instalar [Debian](https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-10.7.0-amd64-netinst.iso) en VMWare y configurar shared folder. 
 
@@ -83,8 +83,6 @@ Una posible ventaja adicional de usar estas funciones en lugar del acceso direct
 
 Un aspecto fundamental y muy complejo en el desarrollo de un manejador es el control de todos los problemas de concurrencia que pueden presentarse durante la ejecución del mismo, y más si este está destinado a ejecutar en un sistema multiprocesador con un sistema operativo expulsivo, como ocurre con todo el código de Linux. De hecho, el grado de complejidad es tal que es prácticamente imposible verificar de una manera formal la total corrección de un determinado módulo y que el mismo está libre de condiciones de carrera.
 
-Puede consultar el [capítulo 5 del libro LDD](https://static.lwn.net/images/pdf/LDD3/ch05.pdf) para profundizar en los aspectos presentados en este apartado.
-
 Se pueden distinguir dos tipos de escenarios potencialmente conflictivos en lo que se refiere a la concurrencia y dos clases de soluciones. En cuanto a los escenarios conflictivos, se podrían clasificar como:
 
 * Problemas de concurrencia entre llamadas concurrentes, es decir, entre eventos síncronos.
@@ -100,8 +98,8 @@ Como mecanismo bloqueante (es decir, adecuado para resolver problemas de sincron
 
 * El tipo de datos que corresponde a un mutex es: **struct mutex**.
 * La función para iniciarlo es: **mutex_init(struct mutex *m)**.
-* Las funciones para obtenerlo son: **int mutex_lock(struct mutex *m)** e **int mutex_lock_interruptible(struct mutex *m)**. El sufijo interruptible indica que el proceso esperando por ese mutex puede salir del bloqueo por una señal, y suele ser la opción usada en la mayoría de las ocasiones. Cuando el proceso recibe una señal, mutex_lock_interruptible devuelve un valor negativo y, normalmente, la llamada al sistema debería terminar en ese momento devolviendo el error -ERESTARTSYS.
-* La función para liberarlo es: int mutex_unlock(struct mutex *m).
+* Las funciones para obtenerlo son: **int mutex_lock(struct mutex *m)** e **int mutex_lock_interruptible(struct mutex *m)**. El sufijo interruptible indica que el proceso esperando por ese mutex puede salir del bloqueo por una señal, y suele ser la opción usada en la mayoría de las ocasiones. Cuando el proceso recibe una señal, **mutex_lock_interruptible** devuelve un valor negativo y, normalmente, la llamada al sistema debería terminar en ese momento devolviendo el error **-ERESTARTSYS**.
+* La función para liberarlo es: **int mutex_unlock(struct mutex *m)**.
 
 ##### Soluciones basadas en espera activa
 
@@ -206,7 +204,7 @@ Para probar el software desarrollado en esta fase, dado que todavía no se ha cr
 
 ## Segunda fase: Alta y baja del dispositivo
 
-### Conocimiento Previo de segunda fase
+### Conocimiento previo de segunda fase
 
 #### Reserva y liberación de números major y minor
 
@@ -358,3 +356,43 @@ A continuación, pruebe a ejecutar el siguiente mandato para comprobar que se ac
 
     sudo chmod 666 /dev/intspkr
     echo X > /dev/intspkr
+
+## Tercera fase: Operaciones de apertura y cierre
+
+### Conocimiento previo de tercera fase
+
+#### Parámetros del open
+
+La llamada de apertura recibe dos parámetros:
+
+* Un puntero al inodo de fichero (**struct inode *inode**). Desde el punto de vista del diseño de un manejador, el campo más interesante de esa estructura es **struct cdev *i_cdev** y es un puntero a la estructura cdev que se usó al crear el dispositivo.
+* Un puntero a la estructura file (**struct file *file**) que representa un descriptor de un fichero abierto. De cara el proyecto, el único campo relevante es **f_mode**, que almacena el modo de apertura del fichero. Para determinar el modo de apertura, se puede comparar ese campo con las constantes **FMODE_READ** y **FMODE_WRITE**.
+
+### Funcionalidad a desarrollar de la tercera fase
+
+Hay que asegurarse de que en cada momento solo está abierto una vez en modo escritura el fichero. Si se produce una solicitud de apertura en modo escritura estando ya abierto en ese mismo modo, se retornará el error **-EBUSY**. Nótese que, sin embargo, no habrá ninguna limitación con las aperturas en modo lectura.
+Téngase en cuenta que pueden ejecutarse concurrentemente varias activaciones de la operación de apertura (ya sea porque se ejecutan en distinto procesador o, aunque se ejecuten en el mismo, lo hacen de forma intercalada al tratarse de un núcleo expulsivo). Por tanto, se deberá asegurar de que no se producen condiciones de carrera.
+
+### Pruebas de la tercera fase
+
+A continuación se propone una prueba para verificar si la funcionalidad se ha desarrollado correctamente:
+
+Se arranca en una ventana un escritor y se le deja parado sin escribir nada por la pantalla en background:
+
+    cat > /dev/intspkr &
+
+En una segunda ventana se ejecuta otro escritor y debe producirse un error(Dispositivo o recurso ocupado):
+
+    cat > /dev/intspkr
+
+Se lanza un proceso que abre el fichero en modo lectura para comprobar que no da error:
+
+    cat /dev/intspkr
+
+En la ventana inicial introducimos un Control-D para finalizar el proceso escritor y volvemos a lanzarlo para probar que se ha rehabilitado la posibilidad de abrir el fichero en modo escritura.
+
+    jobs
+    fg [tarea id]
+    {introducimos control-D}
+    cat > /dev/intspkr
+
