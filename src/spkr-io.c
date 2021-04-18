@@ -1,5 +1,8 @@
 #include "spkr-io.h"
 
+#define isPC() (defined(__i386__) || defined(__x86_64__))
+#define isRaspberry() __arm__
+
 // PC
 #if isPC()
 #include <asm/io.h>
