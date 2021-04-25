@@ -16,6 +16,15 @@ MODULE_LICENSE("Dual BSD/GPL");
 static int minor = 0;
 module_param(minor, int, S_IRUGO);
 
+static struct timer_list timer_list;
+#define FREQUENCY_OF_BEEP 440
+void playSound(struct timer_list *timer_list)
+{
+    spkr_set_frequency(FREQUENCY_OF_BEEP);
+    spkr_on();
+    printk(KERN_INFO "Start Beeping!!!\n");
+}
+
 static dev_t devID;
 
 struct mutex mutexForWriteSession;
@@ -83,7 +92,6 @@ static struct file_operations intspkr_fops = {
 
 static struct class *dev_class;
 
-#define FREQUENCY_OF_BEEP 440
 #define DEVICE_NAME "intspkr"
 #define SYSFS_CLASS_NAME_FOR_INTSPKR DEVICE_NAME
 #define SYSFS_DEVICE_NAME_FOR_INTSPKR DEVICE_NAME
@@ -113,9 +121,9 @@ static int __init intspkr_init(void)
     printk(KERN_INFO "Initialized intspkr!\n");
 
     spkr_init();
-    spkr_set_frequency(FREQUENCY_OF_BEEP);
-    spkr_on();
-    printk(KERN_INFO "Start Beeping!!!\n");
+    timer_setup(&timer_list, playSound, 0);
+    timer_list.expires = jiffies + msecs_to_jiffies(5000);
+    add_timer(&timer_list);
     return 0;
 }
 
