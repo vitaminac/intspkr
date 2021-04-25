@@ -4,6 +4,7 @@
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/uaccess.h>
+#include <linux/kthread.h>
 #include "spkr-io.h"
 
 MODULE_LICENSE("Dual BSD/GPL");
@@ -22,7 +23,19 @@ void playSound(struct timer_list *timer_list)
 {
     spkr_set_frequency(FREQUENCY_OF_BEEP);
     spkr_on();
-    printk(KERN_INFO "Start Beeping!!!\n");
+    printk(KERN_INFO "Start Beeping!\n");
+}
+
+static struct task_struct *consumerTask;
+int consumer(void *data)
+{
+    printk(KERN_INFO "Starting Consumer Thread!\n");
+    timer_list.expires = jiffies + msecs_to_jiffies(5000);
+    add_timer(&timer_list);
+    while (!kthread_should_stop())
+        schedule();
+    printk(KERN_INFO "Stopping Consumer Thread!\n");
+    return 0;
 }
 
 static dev_t devID;
@@ -122,13 +135,15 @@ static int __init intspkr_init(void)
 
     spkr_init();
     timer_setup(&timer_list, playSound, 0);
-    timer_list.expires = jiffies + msecs_to_jiffies(5000);
-    add_timer(&timer_list);
+    printk(KERN_INFO "Creating Consumer Thread!\n");
+    consumerTask = kthread_run(consumer, NULL, "intspkr consumer thread");
+    printk(KERN_INFO "Consumer Thread Created!\n");
     return 0;
 }
 
 static void __exit intspkr_exit(void)
 {
+    kthread_stop(consumerTask);
     spkr_off();
     spkr_exit();
     printk(KERN_INFO "Stop Beeping!!!\n");
