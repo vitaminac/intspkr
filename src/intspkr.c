@@ -4,8 +4,7 @@
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/uaccess.h>
-#include <linux/kthread.h>
-#include "spkr-io.h"
+#include "spkr-fifo.h"
 
 MODULE_LICENSE("Dual BSD/GPL");
 
@@ -16,27 +15,6 @@ MODULE_LICENSE("Dual BSD/GPL");
  */
 static int minor = 0;
 module_param(minor, int, S_IRUGO);
-
-static struct timer_list timer_list;
-#define FREQUENCY_OF_BEEP 440
-void playSound(struct timer_list *timer_list)
-{
-    spkr_set_frequency(FREQUENCY_OF_BEEP);
-    spkr_on();
-    printk(KERN_INFO "Start Beeping!\n");
-}
-
-static struct task_struct *consumerTask;
-int consumer(void *data)
-{
-    printk(KERN_INFO "Starting Consumer Thread!\n");
-    timer_list.expires = jiffies + msecs_to_jiffies(5000);
-    add_timer(&timer_list);
-    while (!kthread_should_stop())
-        schedule();
-    printk(KERN_INFO "Stopping Consumer Thread!\n");
-    return 0;
-}
 
 static dev_t devID;
 
@@ -131,23 +109,14 @@ static int __init intspkr_init(void)
     device_create(dev_class, NULL, devID, NULL, SYSFS_DEVICE_NAME_FOR_INTSPKR);
 
     mutex_init(&mutexForWriteSession);
+    init_fifo();
     printk(KERN_INFO "Initialized intspkr!\n");
-
-    spkr_init();
-    timer_setup(&timer_list, playSound, 0);
-    printk(KERN_INFO "Creating Consumer Thread!\n");
-    consumerTask = kthread_run(consumer, NULL, "intspkr consumer thread");
-    printk(KERN_INFO "Consumer Thread Created!\n");
     return 0;
 }
 
 static void __exit intspkr_exit(void)
 {
-    kthread_stop(consumerTask);
-    spkr_off();
-    spkr_exit();
-    printk(KERN_INFO "Stop Beeping!!!\n");
-
+    destroy_fifo();
     mutex_destroy(&mutexForWriteSession);
 
     // baja el archivo /sys/class/intspkr/intspkr y automaticamente tambien darse baja del /dev/intspkr

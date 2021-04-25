@@ -1,5 +1,5 @@
 #ifndef SKPR_IO_H
-#define SKPR_H
+#define SKPR_IO_H
 #include <linux/types.h>
 
 void spkr_init(void);

@@ -3,7 +3,7 @@
 ifneq ($(KERNELRELEASE),)
 	obj-m += intspkr.o
 	# https://tldp.org/LDP/lkmpg/2.6/html/x181.html
-	intspkr-objs := ./src/intspkr.o ./src/spkr-io.o
+	intspkr-objs := ./src/intspkr.o ./src/spkr-io.o ./src/spkr-fifo.o
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
 else
