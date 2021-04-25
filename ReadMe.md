@@ -81,6 +81,8 @@ Una posible ventaja adicional de usar estas funciones en lugar del acceso direct
 
 #### La sincronización en Linux
 
+Se puede consultar el [capítulo 5](http://www.makelinux.net/ldd3/chp-5.shtml) del libro LDD para profundizar en los aspectos presentados en este apartado.
+
 Un aspecto fundamental y muy complejo en el desarrollo de un manejador es el control de todos los problemas de concurrencia que pueden presentarse durante la ejecución del mismo, y más si este está destinado a ejecutar en un sistema multiprocesador con un sistema operativo expulsivo, como ocurre con todo el código de Linux. De hecho, el grado de complejidad es tal que es prácticamente imposible verificar de una manera formal la total corrección de un determinado módulo y que el mismo está libre de condiciones de carrera.
 
 Se pueden distinguir dos tipos de escenarios potencialmente conflictivos en lo que se refiere a la concurrencia y dos clases de soluciones. En cuanto a los escenarios conflictivos, se podrían clasificar como:
@@ -208,6 +210,8 @@ Para probar el software desarrollado en esta fase, dado que todavía no se ha cr
 
 #### Reserva y liberación de números major y minor
 
+Se puede consultar la [sección 2 del capítulo 3](http://www.makelinux.net/ldd3/chp-3-sect-2.shtml) del libro LDD para profundizar en los aspectos presentados en este apartado.
+
 Un dispositivo en Linux queda identificado por una pareja de números: el major, que identifica al manejador, y el minor, que identifica al dispositivo concreto entre los que gestiona ese manejador. El tipo **dev_t** mantiene un identificador de dispositivo dentro del núcleo. Internamente, como se comentó previamente, está compuesto por los valores major y minor asociados, pudiéndose extraer los mismos del tipo identificador:
 
     dev_t myDevice; 
@@ -240,11 +244,13 @@ La operación complementaria a la reserva es la liberación de los números majo
 
 #### Alta y baja de un dispositivo dentro del núcleo
 
+Se puede consultar la [sección 4 del capítulo 3](http://www.makelinux.net/ldd3/chp-3-sect-4.shtml) del libro LDD para profundizar en los aspectos presentados en este apartado.
+
 Por ahora, solo hemos reservado un número de identificador de dispositivo formado por la pareja major y minor. A continuación, es necesario "crear un dispositivo" asociado a ese identificador, es decir, dar de alta dentro del núcleo la estructura de datos interna que representa un dispositivo de caracteres y, dentro de esta estructura, especificar la parte más importante: el conjunto de funciones de acceso (apertura, cierre, lectura, escritura...) que proporciona el dispositivo.
 
 El tipo que representa un dispositivo de caracteres dentro de Linux es struct cdev (no confundir con el tipo dev_t, comentado previamente, que guarda un identificador de dispositivo; nótese, sin embargo, que, como es lógico, dentro del tipo struct cdev hay un campo denominado dev de tipo dev_t que almacena el identificador de ese dispositivo), que está definido en **#include <linux/cdev.h>**.
 
-Se debe definir una variable de este tipo (o una estructura que la contenga) y usar la función cdev_init para dar valor inicial a sus campos. El primer parámetro será la dirección de esa variable que se pretende iniciar y el segundo una estructura de tipo **struct file_operations** que especifica las funciones de servicio del dispositivo.
+Se debe definir una variable de este tipo (o una estructura que la contenga) y usar la función cdev_init para dar valor inicial a sus campos. El primer parámetro será la dirección de esa variable que se pretende iniciar y el segundo una estructura de tipo **struct file_operations** que especifica las funciones de servicio del dispositivo (véase [sección 3 del capítulo 3](http://www.makelinux.net/ldd3/chp-3-sect-3.shtml) del libro LDD):
 
     void cdev_init(struct cdev *cdev, struct file_operations *fops);
 
@@ -363,6 +369,8 @@ A continuación, pruebe a ejecutar el siguiente mandato para comprobar que se ac
 
 #### Parámetros del open
 
+Se puede consultar la [sección 3 del capítulo 3](http://www.makelinux.net/ldd3/chp-3-sect-3.shtml) y la [sección 5 del capítulo 3](http://www.makelinux.net/ldd3/chp-3-sect-5.shtml) del libro LDD para profundizar en los aspectos presentados en este apartado.
+
 La llamada de apertura recibe dos parámetros:
 
 * Un puntero al inodo de fichero (**struct inode *inode**). Desde el punto de vista del diseño de un manejador, el campo más interesante de esa estructura es **struct cdev *i_cdev** y es un puntero a la estructura cdev que se usó al crear el dispositivo.
@@ -396,3 +404,184 @@ En la ventana inicial introducimos un Control-D para finalizar el proceso escrit
     {introducimos control-D}
     cat > /dev/intspkr
 
+## Cuarta fase: Operación de escritura
+
+Esta es la fase central del proyecto en la que se desarrolla la funcionalidad principal del manejador. En ella, es necesario gestionar un buffer interno donde se irán almacenando los sonidos generados por la aplicación en espera de que se vayan reproduciendo. Para la implementación de ese buffer que tiene un comportamiento de cola **FIFO**, se presentan dos opciones: programar una estructura de datos que implemente esa cola o, la opción recomendada, usar un tipo de datos interno de Linux, denominado **kfifo**, que implementa esa funcionalidad.
+
+Si se opta por la primera alternativa, es necesario conocer cómo se reserva memoria dinámica en Linux, mientras que si se selecciona la segunda, no es estrictamente necesario conocer este aspecto puesto que esa reserva de memoria se realiza internamente al iniciar una instancia del tipo **kfifo**. En cualquier caso, a continuación, se va a incluir información sobre cómo se solicita y libera memoria dinámica dentro del núcleo de Linux.
+
+### Conocimiento previo de la cuarta fase
+
+#### Reserva y liberación de memoria dinámica
+
+Puede consultar la [sección 1 del capítulo 8](http://www.makelinux.net/ldd3/chp-8-sect-1.shtml) del libro LDD para profundizar en los aspectos presentados en este apartado.
+
+Las funciones para reservar y liberar memoria dinámica son kmalloc y kfree, cuyas declaraciones son las siguientes:
+
+    #include <linux/slab.h>
+    void *kmalloc(size_t size, int flags);
+    void kfree(const void *);
+
+Sus prototipos son similares a las funciones correspondientes de la biblioteca de C. La única diferencia está en el parámetro flags, que controla el comportamiento de la reserva. Los tres valores más usados para este parámetro son:
+
+* **GFP_KERNEL**: Reserva espacio para uso del sistema operativo pero asumiendo que esta llamada puede bloquear al proceso invocante si es necesario. Es el que se usa para reservar memoria en el contexto de una llamada al sistema.
+* **GFP_ATOMIC**: Reserva espacio para uso del sistema operativo pero asegurando que esta llamada nunca se bloquea. Es el método que se usa para reservar memoria en el ámbito de una rutina de interrupción.
+* **GFP_USER**: Reserva espacio para páginas de usuario. Se usa en la rutina de fallo de página para asignar un marco al proceso.
+
+En caso de error, la llamada kmalloc devuelve NULL. Habitualmente, en ese caso se termina la función correspondiente retornando el error **-ENOMEM**.
+
+#### Acceso al mapa de usuario del proceso
+
+Se puede consultar [la sección 7 del capítulo 3](http://www.makelinux.net/ldd3/chp-3-sect-7.shtml#chp-3-ITERM-4602) y [la sección 1 del capítulo 6](http://www.makelinux.net/ldd3/chp-6-sect-1.shtml#chp-6-ITERM-5180) del libro LDD para profundizar en los aspectos presentados en este apartado.
+
+Habitualmente, un manejador necesita acceder al mapa de memoria de usuario para leer información del mismo, en el caso de una escritura, y para escribir información en él, si se trata de una lectura. Para ello, se proporcionan funciones similares a la rutina estándar de C memcpy que permiten copiar datos desde el espacio de usuario al de sistema (**copy_from_user**) y viceversa (**copy_to_user**). Asimismo, se ofrecen macros que permite copiar un único dato en ambos sentidos (**get_user** y **put_user**, respectivamente).
+
+    #include <asm/uaccess.h>
+    unsigned long copy_from_user(void __user *to, const void *from, unsigned long n);
+    unsigned long copy_to_user(void *to, const void __user *from, unsigned long n);
+    int put_user(datum,ptr);
+    int get_user(local,ptr);
+
+En caso de éxito, estas funciones devuelven un 0. Si hay un fallo, que se deberá a que en el rango de direcciones del **buffer** de usuario hay una o más direcciones inválidas, devuelve un valor distinto de 0 que representa el número de bytes que no se han podido copiar.
+
+Normalmente, si se produce un error, la función correspondiente devuelve el error **-EFAULT**.
+
+#### Bloqueo y desbloqueo de procesos
+
+A continuación, se explican algunos conceptos básicos de la gestión de bloqueos y desbloqueos de procesos en Linux.
+
+##### Cola de espera
+
+La gestión de bloqueos se basa en el mecanismo de colas de espera (**wait queues**). El siguiente ejemplo muestra cómo declarar e iniciar una cola de espera que, como es frecuente, está incluida dentro de la estructura que almacena la información del dispositivo:
+
+    #include <linux/wait.h>
+    #include <linux/sched.h>
+    
+    // declaración de una variable dentro de una estructura
+    struct info_dispo {
+        wait_queue_head_t lista_bloq;
+        ................
+    } info;
+    // iniciación de la variable (se suele hacer en la carga del módulo)
+    init_waitqueue_head(&info.lista_bloq);
+
+Para el bloqueo del proceso, Linux proporciona varias funciones. En la práctica se propone usar la macro **wait_event_interruptible** cuyo prototipo es el siguiente:
+
+    int wait_event_interruptible(wait_queue_head_t cola, int condicion);
+
+Esta función causa que el proceso se bloquee en la cola hasta que sea desbloqueado y se cumpla la condición. Nótese que si en el momento de invocar la función ya se cumple la condición, no se bloqueará. Tenga en cuenta que la condición no solo se evaluará en el momento de invocación de la macro, sino todas las veces que sea necesario.
+
+La función **wait_event_interruptible** devuelve un valor distinto de 0 si el bloqueo ha quedado cancelado debido a que el proceso en espera ha recibido una señal. Si es así, el tratamiento habitual es terminar la llamada devolviendo el valor **-ERESTARTSYS**, que indica al resto del sistema operativo que realice el tratamiento oportuno.
+
+Para el desbloqueo de otro proceso, se propone usar la función wake_up_interruptible, que desbloquea a todos los procesos esperando en esa cola de procesos. Su prototipo es el siguiente:
+
+    void wake_up_interruptible(wait_queue_head_t *cola);
+
+Nótese que no es necesario comprobar que hay algún proceso bloqueado en la cola de espera (es decir, que la cola no está vacía) antes de usar esta función ya que esta comprobación la realiza la propia función.
+
+##### KFIFO
+
+Linux proporciona una implementación de una cola FIFO, que permite almacenar en la misma elementos de un determinado tamaño (por defecto, cada elemento es de tipo **unsigned char**, pero puede especificarse que sea de cualquier tipo). El diseño de la misma está cuidadosamente realizado de manera que no requiere ningún tipo de sincronización siempre que solo haya un flujo de ejecución productor y uno consumidor. Puede consultar el [API de kfifo](https://www.kernel.org/doc/htmldocs/kernel-api/kfifo.html).
+
+A continuación, se comentan brevemente algunas de las funciones que se pueden requerir a la hora de llevar a cabo el proyecto:
+
+* **kfifo_alloc**: crea una **cola FIFO** reservando en memoria dinámica el buffer requerido. El número de elementos que tendrá el buffer se especifica en el segundo parámetro y debe ser una potencia de 2 siendo redondeado por exceso para cumplirlo (ese requisito permite una gestión más eficiente del buffer). El tercer parámetro debe ser especificado conforme a lo explicado en la sección que describía cómo reservar memoria dinámica en Linux, ya que, al fin y al cabo, internamente esta función realiza un kmalloc.
+* **kfifo_free**: libera el buffer y destruye la cola.
+* **kfifo_is_full**, **kfifo_is_empty**, **kfifo_size**, **kfifo_len** y **kfifo_avail** retornan, respectivamente, si la cola está llena o vacía, el tamaño de la cola, el número de elementos almacenados en la misma y el número que todavía cabrían.
+* **kfifo_out**: extrae datos de la cola FIFO. En el tercer parámetro se especifican cuántos elementos se quieren extraer y como valor de retorno devuelve cuántos realmente se han extraído.
+* **kfifo_from_user**: copia datos del mapa de usuario a la cola FIFO. Esta macro usa internamente la función copy_from_user presentada en el apartado previo pudiendo, por tanto, devolver el mismo valor de error.
+**kfifo_reset_out**: es equivalente a extraer todo el contenido actual del buffer pero sin copiarlo a ningún sitio.
+
+##### Gestión de temporizadores
+
+Puede consultar la [sección 4 del capítulo 7](http://www.makelinux.net/ldd3/chp-7-sect-4.shtml) del libro LDD para profundizar en los aspectos presentados en este apartado.
+
+El API interno de Linux ofrece una colección de funciones que permiten gestionar temporizadores, es decir, permite solicitar que cuando transcurra una cierta cantidad de tiempo, se ejecute asíncronamente la función asociada al temporizador. A la hora de especificar el tiempo hay que hacerlo usando como unidad el periodo (inverso de la frecuencia) de la interrupción del reloj del sistema (es decir, el tiempo que transcurre entre dos interrupciones de reloj). El tiempo actual se almacena en la variable global jiffies y corresponde al número de interrupciones de reloj que se han producido desde que arrancó el sistema.
+
+El API de gestión de temporizadores ha cambiado a partir de la versión del núcleo 4.15. Como se especificó al principio del documento, si está trabajando sobre una plataforma de tipo PC, debe usar una versión del núcleo al menos 5.0. En caso de que esté desarrollando el proyecto en una plataforma RaspBerry, se permite usar versiones de núcleos más antiguas, pudiendo tener que utilizar el API antiguo. Por no alargar más el documento, a continuación, se revisa brevemente el API actual. Por favor, si necesita información del API previa, busque la informacion correspondiente.
+
+* **struct timer_list**: tipo de datos asociado a un temporizador. Aunque esta estructura tiene más campos, estamos interesados en los dos siguientes: **function**, que corresponde a la función que se invocará cuando se cumpla el temporizador, y **expires**, que determina cuándo se cumplirá el temporizador especificando qué valor deberá tener la variable **jiffies** para que se produzca su activación (así, por ejemplo, para especificar que el temporizador se debe activar cuando transcurra, al menos, 1 milisegundo, hay que especificar en este campo la suma del valor actual de la variable global **jiffies** más el número de interrupciones de reloj que corresponden a 1 milisegundo). Las funciones **jiffies_to_msecs** y **msecs_to_jiffies** calculan a cuántos milisegundos corresponde un determinado número de **jiffies** (es decir, de interrupciones de reloj) y viceversa.
+* Para la iniciación del temporizador se usa la función **timer_setup**, que inicia la estructura asociada al temporizador, especificando tres parámetros:
+  * El temporizador **(struct timer_list *)** que se pretende iniciar.
+  * La función que se activará cuando se cumpla el temporizador **(void (*func)(struct timer_list *))**. Nótese que, por tanto, suponiendo que la función se denomina **f**, cuando venza el temporizador esa función recibirá como parámetro la dirección de la estructura **struct timer_list** correspondiente al temporizador que causó su activación **void f(struct timer_list *t)**.
+  * Unos flags que permiten configurar varios aspectos relacionados con el comportamiento del temporizador que se está iniciando. Para este proyecto, se puede usar el comportamiento por defecto, que corresponde a un valor de cero en este parámetro.
+* **add_timer**: permite activar el temporizador, teniendo que haber asignado previamente al campo expires la duración de la temporización.
+* **mod_timer**: permite cancelar un temporizador actualmente activo y reactivarlo con una nueva duración especificada como parámetro. Si no estaba activo ese temporizador, simplemente lo activa con lo que puede servir como sustituto de add_timer eliminando la necesidad de modificar explícitamente el campo **expires**.
+* **del_timer_sync**: desactiva el temporizador y, en el caso de un multiprocesador, espera a que la función asociada al temporizador concluya, en el caso de que se estuviera ejecutando en ese momento.
+
+Es importante resaltar que la rutina del temporizador se ejecuta de manera asíncrona, en el contexto de una interrupción software. Por tanto, para protegerse de la misma en un entorno multiprocesador hay que usar spin_lock_bh para inhibir las interrupciones software en el fragmento de código conflictivo.
+
+### Funcionalidad a desarrollar de la cuarta fase
+
+Como se comentó previamente, esta fase es el meollo del proyecto puesto que en ella hay que implementar toda la lógica del modo de operación desacoplado del manejador.
+
+En cuanto a la operación de escritura, dado que se asume que el manejador puede ejecutar en un sistema multiprocesador con un núcleo expulsivo, para evitar condiciones de carrera (recuerde que la estructura kfifo está diseñada para que funcione con un único productor y un único consumidor, siendo necesaria una sincronización explícita en caso contrario), hay que asegurarse de que se secuencia el procesamiento de las llamadas de escritura (como se verá más adelante, también hay que secuenciar las llamadas **fsync** tanto entre sí como con respecto a las escrituras).
+
+Tal como se ha explicado previamente, el comportamiento de la llamada de escritura seguirá el rol de productor trabajando de forma desacoplada con el proceso de consumir los datos (la reproducción de sonidos). Esta llamada quedará bloqueada solo si se encuentra la cola llena y terminará en cuanto haya podido copiar en la cola todos los bytes que se pretenden escribir. Esta llamada, solo en caso de que en ese momento no se esté reproduciendo ningún sonido (el dispositivo está parado), programará la reproducción del sonido de turno, activando el altavoz, a no ser que se trate de un silencio. Recuerde que si el tamaño de la escritura no es múltiplo de 4, al no tratarse de un sonido completo, se guardará esa información parcial hasta que una escritura posterior la complete.
+
+La programación del dispositivo implica fijar la frecuencia del altavoz al valor especificado y establecer un temporizador con un valor correspondiente a la duración del sonido. En caso de tratarse de un silencio no hay que fijar la frecuencia sino desactivar el altavoz si estuviera activo en ese momento.
+
+Como se comentó previamente, este modo desacoplado conlleva algunas dificultades en lo que se refiere a la descarga del módulo (rmmod) puesto que, aunque no haya ningún fichero abierto asociado al manejador, este puede seguir procesando los sonidos almacenados en la cola. Hay que asegurarse, por tanto, en la operación de fin de módulo de que se realiza una desactivación ordenada del dispositivo, deteniendo el temporizador que pudiera estar activo (en un multiprocesador, incluso podría estar ejecutando en ese momento la rutina del temporizador) y silenciando el altavoz.
+
+### Pruebas de la cuarta fase
+
+A continuación se propone una serie de pruebas para verificar si la funcionalidad se ha desarrollado correctamente. Para poder verificar mejor el comportamiento de la práctica, se recomienda imprimir un mensaje a la entrada y a la salida de la función de escritura, al comienzo y al final de la función asociada al temporizador y cada que vez que se va a programar un sonido especificando la frecuencia y duración del mismo. Usando el mandato dmesg podrá visualizar todos esos mensajes. Se proporciona un fichero binario (songs.bin) con la secuencia de sonidos de varias canciones, así como una versión en modo texto del mismo (songs.txt) para facilitar la comprobación del buen comportamiento del código en las pruebas.
+
+1. Esta prueba comprueba si se procesa correctamente un único sonido (la primera nota de la sintonía de Los Simpsons).
+
+        $ dd if=songs.bin of=/dev/intspkr bs=4 count=1
+
+Compruebe con dmesg que la frecuencia y duración son adecuadas (puede verificarlo comprobando los valores almacenados en la primera línea del fichero songs.txt), y que el altavoz se ha programado correctamente:
+
+        spkr set frequency: 1047
+        spkr ON
+        spkr OFF
+
+2. En esta prueba se genera el mismo sonido pero realizando dos escrituras de dos bytes. El comportamiento dede ser el mismo que la prueba anterior.
+
+        $ dd if=songs.bin of=/dev/intspkr bs=2 count=2
+
+3. Esta prueba genera los 8 primeros sonidos del fichero songs.bin usando 8 escrituras y dejando tanto el tamaño del buffer como del umbral en sus valores por defecto. La primera escritura debe activar el primer sonido y las restantes deben devolver el control inmediatamente. Con dmesg se debe apreciar que, exceptuando el primer sonido, los demás son programados en el contexto de la rutina de tratamiento del temporizador.
+
+        $ dd if=songs.bin of=/dev/intspkr bs=4 count=8
+
+4. La misma prueba que la anterior pero con una única escritura, que debe completarse inmediatamente.
+
+        $ dd if=songs.bin of=/dev/intspkr bs=32 count=1
+
+5. Esta prueba intenta comprobar que se tratan adecuadamente las pausas o silencios que aparecen en una secuencia. Para ello, se van a generar los 20 primeros sonidos, donde aparecen dos pausas. Debe comprobarse que el altavoz se desactiva al tratar esas pausas y que se reactiva al aparecer nuevamente sonidos convencionales en la secuencia. Se va a probar con escrituras de 4 bytes y con una única escritura:
+
+        $ dd if=songs.bin of=/dev/intspkr bs=4 count=20
+        $ dd if=songs.bin of=/dev/intspkr bs=80 count=1
+
+6. Esta prueba va a forzar que se llene la cola pero no va a definir ningún umbral. Para llevarla a cabo, se debe cargar el módulo especificando un tamaño de buffer de 32. A continuación, se va ejecutar una prueba que genere 20 sonidos. En primer lugar, con escrituras de 4 bytes:
+
+        dd if=songs.bin of=/dev/intspkr bs=4 count=20
+
+Debe comprobar con dmesg como la llamada de escritura que encuentra la cola llena se bloquea y que, cada vez que completa el procesado de un sonido, se desbloquea al proceso escritor puesto que, al realizar operaciones de 4 bytes, ya tiene sitio en la cola para completar la llamada y ejecutar en paralelo con el procesamiento de los sonidos previos.
+
+Finalizada la prueba, repítala usando una única escritura de 80 bytes.
+
+        dd if=songs.bin of=/dev/intspkr bs=80 count=1
+
+En este caso, debe comprobar cómo en la operación de escritura se producen solo dos bloqueos.
+
+7. Esta prueba comprueba el funcionamiento del umbral. Para ello, se repetirá la anterior (programa que genera 20 sonidos) pero especificando un tamaño de umbral de 16 bytes. La prueba que realiza escrituras de 4 bytes no se verá afectada por el cambio pero sí lo estará la que realiza una única escritura de 80 bytes, que se bloqueará tres veces, en lugar de 2.
+
+8. Aunque se podrían probar múltiples situaciones de error, vamos a centrarnos solo en una: la dirección del buffer de la operación write no es válida y, por tanto, esta llamada debe retornar el error -EFAULT. La prueba consiste simplemente en ejecutar el programa error proporcionado como material de apoyo.
+
+        ./error
+
+9. Esta es una prueba de esfuerzo (usa los valores por defecto de todos los parámetros): se reproduce todo el fichero de canciones usando escrituras de 4 bytes:
+
+        $ dd if=songs.bin of=/dev/intspkr bs=4
+
+y, acabada completamente esa prueba (con la cola vacía), se repite usando escrituras de 4KiB:
+
+        $ dd if=songs.bin of=/dev/intspkr bs=4096
+
+10. En esta prueba, que también usa los valores por defecto de todos los parámetros, se va a comprobar que cuando se descarga el módulo justo después de completarse la aplicación, se hace de forma correcta deteniendo el procesamiento de sonidos y dejando en silencio el altavoz:
+
+        $ dd if=songs.bin of=/dev/intspkr bs=4096 count=1
+        $ sleep 1
+        $ rmmod spkr
