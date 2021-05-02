@@ -86,6 +86,7 @@ static struct class *dev_class;
 #define DEVICE_NAME "intspkr"
 #define SYSFS_CLASS_NAME_FOR_INTSPKR DEVICE_NAME
 #define SYSFS_DEVICE_NAME_FOR_INTSPKR DEVICE_NAME
+#define FREQUENCY_OF_BEEP 440
 static int __init intspkr_init(void)
 {
     // reservar la pareja major id y minor id y automaticamente anade una entra en /proc/devices
@@ -111,6 +112,7 @@ static int __init intspkr_init(void)
     mutex_init(&mutexForWriteSession);
     init_fifo();
     printk(KERN_INFO "Initialized intspkr!\n");
+    putSound(FREQUENCY_OF_BEEP, 3000);
     return 0;
 }
 
