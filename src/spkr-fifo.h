@@ -1,5 +1,5 @@
-#ifndef SKPR_FIFO_H
-#define SKPR_FIFO_H
+#ifndef SPKR_FIFO_H
+#define SPKR_FIFO_H
 
 void init_fifo(void);
 void destroy_fifo(void);
