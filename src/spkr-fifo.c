@@ -53,7 +53,7 @@ void wakeUpConsumerThread(struct timer_list *timer_list)
 typedef struct SoundData
 {
     uint16_t frequency;
-    uint32_t durationInMiliseconds;
+    uint16_t durationInMiliseconds;
 } SoundData;
 
 int consumer(void *ignore)
@@ -82,7 +82,7 @@ int consumer(void *ignore)
     return 0;
 }
 
-void putSound(uint16_t frequency, uint32_t durationInMiliseconds)
+void putSound(uint16_t frequency, uint16_t durationInMiliseconds)
 {
     SoundData data;
     data.frequency = frequency;

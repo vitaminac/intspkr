@@ -3,7 +3,6 @@
 #include "spkr-fifo.h"
 
 struct mutex mutexForWriteSession;
-#define FREQUENCY_OF_BEEP 440
 static int intspkr_open(struct inode *inode, struct file *file)
 {
     if (file->f_mode & FMODE_WRITE)
@@ -13,7 +12,6 @@ static int intspkr_open(struct inode *inode, struct file *file)
             return -EBUSY;
         }
     }
-    putSound(FREQUENCY_OF_BEEP, 3000);
     printk(KERN_INFO "intspkr opened!\n");
     return 0;
 }
@@ -26,16 +24,22 @@ static ssize_t intspkr_read(struct file *filp, char __user *buf, size_t size, lo
 
 static ssize_t intspkr_write(struct file *filp, const char __user *buf, size_t size, loff_t *f_pos)
 {
-    /*char soundData[4];
-    ssize_t count = 0;
-    for (; (size - count) > 4; count += 4)
+    char soundData[4];
+    ssize_t count;
+    ssize_t notCopied = 0;
+    printk(KERN_INFO "intspkr try to write %d bytes!\n", size);
+    for (count = 0; (size - count) >= 4; count += 4)
     {
-        if (copy_from_user(soundData, buf + count, 4))
-            return -EFAULT;
-        //producesSound((((uint16_t)soundData[0]) << 8) | (((uint16_t)soundData[1])), (((uint16_t)soundData[2]) << 8) | (((uint16_t)soundData[3])));
-    }*/
-    printk(KERN_INFO "intspkr wrote!\n");
-    return size;
+        notCopied = copy_from_user(soundData, buf + count, 4);
+        if (notCopied > 0)
+        {
+            printk(KERN_INFO "intspkr failed to copy %d bytes from user space!\n", notCopied);
+            return count;
+        }
+        putSound((((uint16_t)soundData[0]) << 8) | ((uint16_t)soundData[1]), (((uint16_t)soundData[2]) << 8) | ((uint16_t)soundData[3]));
+    }
+    printk(KERN_INFO "intspkr wrote %d bytes!\n", count);
+    return count;
 }
 
 static int intspkr_release(struct inode *inode, struct file *file)

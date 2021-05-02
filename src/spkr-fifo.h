@@ -3,6 +3,6 @@
 
 void init_fifo(void);
 void destroy_fifo(void);
-void putSound(uint16_t frequency, uint32_t durationInMiliseconds);
+void putSound(uint16_t frequency, uint16_t durationInMiliseconds);
 
 #endif
