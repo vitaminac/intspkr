@@ -1,7 +1,9 @@
-#include "spkr-fs.h"
 #include <linux/uaccess.h>
+#include "spkr-fs.h"
+#include "spkr-fifo.h"
 
 struct mutex mutexForWriteSession;
+#define FREQUENCY_OF_BEEP 440
 static int intspkr_open(struct inode *inode, struct file *file)
 {
     if (file->f_mode & FMODE_WRITE)
@@ -11,8 +13,7 @@ static int intspkr_open(struct inode *inode, struct file *file)
             return -EBUSY;
         }
     }
-    //(*filp).private_data = kmalloc(1, GFP_KERNEL);
-    //get_random_bytes((*filp).private_data, 1);
+    putSound(FREQUENCY_OF_BEEP, 3000);
     printk(KERN_INFO "intspkr opened!\n");
     return 0;
 }
@@ -59,9 +60,11 @@ struct file_operations intspkr_fops = {
 void init_fs(void)
 {
     mutex_init(&mutexForWriteSession);
+    init_fifo();
 }
 
 void destroy_fs(void)
 {
+    destroy_fifo();
     mutex_destroy(&mutexForWriteSession);
 }

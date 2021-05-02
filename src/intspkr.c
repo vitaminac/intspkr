@@ -3,7 +3,6 @@
 #include <linux/moduleparam.h>
 #include <linux/cdev.h>
 #include "spkr-fs.h"
-#include "spkr-fifo.h"
 
 MODULE_LICENSE("Dual BSD/GPL");
 
@@ -31,7 +30,6 @@ static struct class *dev_class;
 #define DEVICE_NAME "intspkr"
 #define SYSFS_CLASS_NAME_FOR_INTSPKR DEVICE_NAME
 #define SYSFS_DEVICE_NAME_FOR_INTSPKR DEVICE_NAME
-#define FREQUENCY_OF_BEEP 440
 static int __init intspkr_init(void)
 {
     // reservar la pareja major id y minor id y automaticamente anade una entra en /proc/devices
@@ -55,15 +53,13 @@ static int __init intspkr_init(void)
     device_create(dev_class, NULL, devID, NULL, SYSFS_DEVICE_NAME_FOR_INTSPKR);
 
     init_fs();
-    init_fifo();
+
     printk(KERN_INFO "Initialized intspkr!\n");
-    putSound(FREQUENCY_OF_BEEP, 3000);
     return 0;
 }
 
 static void __exit intspkr_exit(void)
 {
-    destroy_fifo();
     destroy_fs();
 
     // baja el archivo /sys/class/intspkr/intspkr y automaticamente tambien darse baja del /dev/intspkr
