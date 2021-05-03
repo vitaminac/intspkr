@@ -68,9 +68,12 @@ int consumer(void *ignore)
         printk(KERN_INFO "Read sound with frequency %d and duration %d ms.\n", sound.frequency, sound.durationInMiliseconds);
 
         notifyFifoIsNotFull();
-        // play sound
-        spkr_set_frequency(sound.frequency);
-        spkr_on();
+        if (sound.frequency > 0)
+        {
+            // play sound
+            spkr_set_frequency(sound.frequency);
+            spkr_on();
+        }
 
         timer_list.expires = jiffies + msecs_to_jiffies(sound.durationInMiliseconds);
         add_timer(&timer_list);
