@@ -84,13 +84,14 @@ int consumer(void *ignore)
 
 void putSound(uint16_t frequency, uint16_t durationInMiliseconds)
 {
+    printk(KERN_INFO "Try to add new sound with frequency %d and duration %d ms.\n", frequency, durationInMiliseconds);
     SoundData data;
     data.frequency = frequency;
     data.durationInMiliseconds = durationInMiliseconds;
     waitUntilFifoIsNotFull();
     kfifo_in(&fifo, &data, sizeof(data));
     notifyFifoIsNotEmpty();
-    printk(KERN_INFO "Putted new sound with frequency %d and duration %d ms.\n", frequency, durationInMiliseconds);
+    printk(KERN_INFO "Put new sound with frequency %d and duration %d ms.\n", frequency, durationInMiliseconds);
 }
 
 static struct task_struct *consumerTask;
