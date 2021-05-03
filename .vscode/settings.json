@@ -1,5 +1,7 @@
 {
     "files.associations": {
-        "spkr-io.h": "c"
+        "spkr-io.h": "c",
+        "spkr-fs.h": "c",
+        "spkr-fifo.h": "c"
     }
 }
