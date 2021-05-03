@@ -584,4 +584,4 @@ y, acabada completamente esa prueba (con la cola vacía), se repite usando escri
 
         $ dd if=songs.bin of=/dev/intspkr bs=4096 count=1
         $ sleep 1
-        $ rmmod spkr
+        $ sudo rmmod spkr
