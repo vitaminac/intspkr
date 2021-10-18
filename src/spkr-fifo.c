@@ -66,6 +66,19 @@ typedef struct SoundData
     uint16_t durationInMiliseconds;
 } SoundData;
 
+void playSound(SoundData *sound)
+{
+    if (sound->frequency > 0)
+    {
+        spkr_set_frequency(sound->frequency);
+        spkr_on();
+    }
+    timer_list.expires = jiffies + msecs_to_jiffies(sound->durationInMiliseconds);
+    add_timer(&timer_list);
+    waitSoundFinishPlayingOrInterrupted();
+    spkr_off();
+}
+
 int consumer(void *ignore)
 {
     SoundData sound;
@@ -73,22 +86,10 @@ int consumer(void *ignore)
     waitUntilFifoIsNotEmptyOrInterrupted();
     while (!kthread_should_stop())
     {
-        // read sound
         kfifo_out(&fifo, &sound, sizeof(sound));
         printk(KERN_INFO "Read sound with frequency %d and duration %d ms.\n", sound.frequency, sound.durationInMiliseconds);
-
         notifyFifoIsNotFull();
-        if (sound.frequency > 0)
-        {
-            // play sound
-            spkr_set_frequency(sound.frequency);
-            spkr_on();
-        }
-
-        timer_list.expires = jiffies + msecs_to_jiffies(sound.durationInMiliseconds);
-        add_timer(&timer_list);
-        waitSoundFinishPlayingOrInterrupted();
-        spkr_off();
+        playSound(&sound);
         notifyFifoMightBeEmpty();
         waitUntilFifoIsNotEmptyOrInterrupted();
     }
@@ -96,7 +97,7 @@ int consumer(void *ignore)
     return 0;
 }
 
-void putSound(uint16_t frequency, uint16_t durationInMiliseconds)
+void scheduleSound(uint16_t frequency, uint16_t durationInMiliseconds)
 {
     printk(KERN_INFO "Try to add new sound with frequency %d and duration %d ms.\n", frequency, durationInMiliseconds);
     SoundData data;
@@ -108,7 +109,7 @@ void putSound(uint16_t frequency, uint16_t durationInMiliseconds)
     printk(KERN_INFO "Put new sound with frequency %d and duration %d ms.\n", frequency, durationInMiliseconds);
 }
 
-void drain(void)
+void waitSoundFinishPlaying(void)
 {
     waitUntilFifoIsEmpty();
 }

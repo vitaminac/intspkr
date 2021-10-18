@@ -35,7 +35,7 @@ static int intspkr_open(struct inode *inode, struct file *file)
 
 static inline void playSound(char *soundData)
 {
-    putSound((((uint16_t)soundData[0]) << 8) | ((uint16_t)soundData[1]), (((uint16_t)soundData[2]) << 8) | ((uint16_t)soundData[3]));
+    scheduleSound((((uint16_t)soundData[0]) << 8) | ((uint16_t)soundData[1]), (((uint16_t)soundData[2]) << 8) | ((uint16_t)soundData[3]));
 }
 static ssize_t intspkr_write(struct file *file, const char __user *buf, size_t size, loff_t *f_pos)
 {
@@ -92,7 +92,7 @@ static int intspkr_fsync(struct file *filp, loff_t start, loff_t end, int datasy
     printk(KERN_INFO "Try to fsync\n");
     if (mutex_lock_interruptible(&mutexForWriteOperation) == 0)
     {
-        drain();
+        waitSoundFinishPlaying();
         printk(KERN_INFO "fsync completed\n");
         mutex_unlock(&mutexForWriteOperation);
         return 0;

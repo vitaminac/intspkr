@@ -3,7 +3,7 @@
 
 void init_fifo(void);
 void destroy_fifo(void);
-void putSound(uint16_t frequency, uint16_t durationInMiliseconds);
-void drain(void);
+void scheduleSound(uint16_t frequency, uint16_t durationInMiliseconds);
+void waitSoundFinishPlaying(void);
 
 #endif
