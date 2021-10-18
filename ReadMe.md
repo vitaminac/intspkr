@@ -585,3 +585,40 @@ y, acabada completamente esa prueba (con la cola vacía), se repite usando escri
         $ dd if=songs.bin of=/dev/intspkr bs=4096 count=1
         $ sleep 1
         $ sudo rmmod spkr
+
+## Cuarta fase: Operación fsync
+
+### fsync
+
+La llamada **fsync**, cuando se usa con un fichero convencional, se asegura de que todos los datos del fichero que están presentes en la cache del sistema de ficheros residente en memoria se escriben en el disco, no completándose hasta que no finalice esa operación de actualización.
+
+En el caso de dispositivos, se usa habitualmente para asegurarse de que todos los datos presentes en el buffer del manejador se han procesado, bloqueando al proceso hasta que eso ocurra.
+
+A continuación, se muestra cómo se incluye en la estructura **struct file_operations** la función que maneja esta llamada al sistema. Nótese que para la funcionalidad que se plantea en este proyecto, no son significativos los parámetros que recibe esta llamada.
+
+    static int ejemplo_fsync(struct file *filp, loff_t start, loff_t end, int datasync) {
+        .....
+
+    static struct file_operations ejemplo_fops = {
+            .owner =    THIS_MODULE,
+        ......................
+            .fsync =    ejemplo_fsync
+    };
+
+### Funcionalidad a desarrollar de la quita fase
+
+La implementación de esta fase requiere la incorporación de una nueva wait queue para permitir que el proceso que realizó la llamada se quede bloqueado esperando hasta que se complete el procesado de todos los sonidos almacenados en la cola FIFO. Al igual que ocurre con la llamada de escritura, mientras el proceso esté bloqueado en esta función, no se procesarán nuevas llamadas de escritura ni al propio **fsync**.
+
+### Pruebas de la quita fase
+
+En cuanto a la funcionalidad de la operación **fsync**, se plantea la siguiente prueba (nuevamente, se recomienda incluir mensajes al entrar y salir se esta función):
+
+1. Teniendo el módulo cargado con los valores por defecto, se va a ejecutar el siguiente mandato que hace una llamada **fsync** justo antes del **close** (nótese el uso del **strace** para comprobar que se bloquea la llamada fsync), primero con 20 escrituras de 4 bytes:
+
+    strace dd if=songs.bin of=/dev/intspkr bs=4 count=20 conv=fsync
+    strace dd if=songs.bin of=/dev/intspkr bs=80 count=1 conv=fsync
+
+Para usar strace hay que instalar el paquete con
+
+    sudo apt install strace
+

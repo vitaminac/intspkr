@@ -25,6 +25,15 @@ static inline void waitUntilFifoIsNotFull(void)
 {
     wait_event_interruptible(fifoNotFullWaitQueue, !kfifo_is_full(&fifo));
 }
+static wait_queue_head_t fifoEmptyWaitQueue;
+static inline void notifyFifoMightBeEmpty(void)
+{
+    wake_up_interruptible(&fifoEmptyWaitQueue);
+}
+static inline void waitUntilFifoIsEmpty(void)
+{
+    wait_event_interruptible(fifoEmptyWaitQueue, kfifo_is_empty(&fifo));
+}
 static wait_queue_head_t soundFinishPlayingWaitQueue;
 static int soundFinishPlaying;
 static inline void notifySoundFinishPlaying(void)
@@ -41,6 +50,7 @@ static inline void initWaitQueues(void)
 {
     init_waitqueue_head(&fifoNotEmptyWaitQueue);
     init_waitqueue_head(&fifoNotFullWaitQueue);
+    init_waitqueue_head(&fifoEmptyWaitQueue);
     init_waitqueue_head(&soundFinishPlayingWaitQueue);
 }
 
@@ -79,6 +89,7 @@ int consumer(void *ignore)
         add_timer(&timer_list);
         waitSoundFinishPlayingOrInterrupted();
         spkr_off();
+        notifyFifoMightBeEmpty();
         waitUntilFifoIsNotEmptyOrInterrupted();
     }
     printk(KERN_INFO "Stopping spkr fifo consumer thread!\n");
@@ -95,6 +106,11 @@ void putSound(uint16_t frequency, uint16_t durationInMiliseconds)
     kfifo_in(&fifo, &data, sizeof(data));
     notifyFifoIsNotEmpty();
     printk(KERN_INFO "Put new sound with frequency %d and duration %d ms.\n", frequency, durationInMiliseconds);
+}
+
+void drain(void)
+{
+    waitUntilFifoIsEmpty();
 }
 
 static struct task_struct *consumerTask;
